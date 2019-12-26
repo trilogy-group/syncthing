@@ -166,22 +166,27 @@ func (s *session) allowNewConnection(conn net.Conn) bool {
 	}
 }
 
-func getIPFromConnection(conn net.Conn) net.IP {
-	var ipWithPort = conn.RemoteAddr().String()
-	if ipWithPort != "" {
-		var ipString = strings.Split(ipWithPort, ":")[0]
-		return net.ParseIP(ipString)
+func getIP(conn net.Conn) net.IP {
+	var ipString = conn.RemoteAddr().String()
+	if ipString != "" {
+		var ipFiltered = strings.Split(ipString, ":")[0]
+		return net.ParseIP(ipFiltered)
 	}
 	return nil
 }
 
 func isWhiteListIp(conn net.Conn) bool {
 	_, subnet, _ := net.ParseCIDR(cidrIpWhiteList)
-	var ip = getIPFromConnection(conn)
-	if debug {
-		log.Println("Validating IP", ip.To4(), "in whitelist", cidrIpWhiteList)
+	var ip = getIP(conn)
+	if ip != nil {
+		if debug {
+			log.Println("Validating IP", ip.To4(), "in whitelist", cidrIpWhiteList)
+		}
+		return subnet.Contains(ip)
+	} else {
+		log.Println("Unable to get IP info from", conn.RemoteAddr().String())
+		return false
 	}
-	return subnet.Contains(ip)
 }
 
 func (s *session) Serve() {
