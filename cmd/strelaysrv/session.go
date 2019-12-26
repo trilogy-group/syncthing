@@ -9,6 +9,7 @@ import (
 	"log"
 	"math"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -165,10 +166,21 @@ func (s *session) allowNewConnection(conn net.Conn) bool {
 	}
 }
 
+func getIPFromConnection(conn net.Conn) net.IP {
+	var ipWithPort = conn.RemoteAddr().String()
+	if ipWithPort != "" {
+		var ipString = strings.Split(ipWithPort, ":")[0]
+		return net.ParseIP(ipString)
+	}
+	return nil
+}
+
 func isWhiteListIp(conn net.Conn) bool {
 	_, subnet, _ := net.ParseCIDR(cidrIpWhiteList)
-	var ip = net.ParseIP(conn.RemoteAddr().String())
-	log.Println("Validating IP", conn.RemoteAddr(), )
+	var ip = getIPFromConnection(conn)
+	if debug {
+		log.Println("Validating IP", ip.To4(), "in whitelist", cidrIpWhiteList)
+	}
 	return subnet.Contains(ip)
 }
 
