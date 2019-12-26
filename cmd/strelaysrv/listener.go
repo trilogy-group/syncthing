@@ -29,6 +29,12 @@ func listener(proto, addr string, config *tls.Config) {
 		log.Fatalln(err)
 	}
 
+	if cidrIpWhiteList != "" {
+		log.Println("Starting to use CIDR IP whitelist: ", cidrIpWhiteList)
+	} else {
+		log.Println("CIDR IP whitelist not required")
+	}
+
 	listener := tlsutil.DowngradingListener{
 		Listener: tcpListener,
 	}

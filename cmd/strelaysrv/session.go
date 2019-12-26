@@ -27,28 +27,6 @@ var (
 	bytesProxied    int64
 )
 
-var privateIPBlocks []*net.IPNet
-var privateIPRanges = []string {
-"127.0.0.0/8",    // IPv4 loopback
-"10.0.0.0/8",     // RFC1918
-"172.16.0.0/12",  // RFC1918
-"192.168.0.0/16", // RFC1918
-"169.254.0.0/16", // RFC3927 link-local
-"::1/128",        // IPv6 loopback
-"fe80::/10",      // IPv6 link-local
-"fc00::/7",       // IPv6 unique local addr
-}
-
-func init() {
-	for _, cidr := range privateIPRanges {
-		_, block, err := net.ParseCIDR(cidr)
-		if err != nil {
-			panic(fmt.Errorf("parse error on %q: %v", cidr, err))
-		}
-		privateIPBlocks = append(privateIPBlocks, block)
-	}
-}
-
 func newSession(serverid, clientid syncthingprotocol.DeviceID, sessionRateLimit, globalRateLimit *rate.Limiter) *session {
 	serverkey := make([]byte, 32)
 	_, err := rand.Read(serverkey)
@@ -139,7 +117,7 @@ type session struct {
 
 func (s *session) AddConnection(conn net.Conn) bool {
 	if debug {
-		log.Println("New connection for", s, "from", conn.RemoteAddr())
+		log.Println("Starting to add a new connection for", s, "from", conn.RemoteAddr(), "local", conn.LocalAddr())
 	}
 
 	if !s.allowNewConnection(conn) {
@@ -156,17 +134,29 @@ func (s *session) AddConnection(conn net.Conn) bool {
 }
 
 func (s *session) allowNewConnection(conn net.Conn) bool {
-	currentConnections := len(s.conns)
 
-	switch currentConnections {
+	if cidrIpWhiteList != "" {
+		if debug {
+			log.Println("Session doesn't require validate new session, IP whitelist is empty")
+		}
+		return true
+	}
+
+	switch len(s.conns) {
 	case 2:
-		log.Println("Session doesn't allow more than two connections peer session")
+		log.Println("Session", s, "doesn't allow more than two connections peer session")
 		return false
 	case 1:
-		existingConnectionIsPrivate := isPrivateIP(s.conns[0])
-		newConnectionIsPrivate := isPrivateIP(conn)
-		if !newConnectionIsPrivate && !existingConnectionIsPrivate {
-			log.Println("Session is only allowed by one public client and another private client")
+		if debug {
+			log.Println("Validating new connection in current session", s, " remote address", conn.RemoteAddr())
+		}
+		var existingConn = s.conns[0]
+		existingConnectionIsAllowed := isWhiteListIp(existingConn)
+		newConnectionIsAllowed := isWhiteListIp(conn)
+		if !existingConnectionIsAllowed && !newConnectionIsAllowed {
+			log.Println("The Session is only allowed by one whitelist IP and another any IP, ",
+				"existing connection:(", existingConn.RemoteAddr(), "/", existingConn.LocalAddr(), " ", existingConnectionIsAllowed, ")",
+				"new connection:(", conn.RemoteAddr(), "/", conn.LocalAddr(), " ", newConnectionIsAllowed, ")")
 			return false
 		}
 		return true
@@ -175,20 +165,11 @@ func (s *session) allowNewConnection(conn net.Conn) bool {
 	}
 }
 
-func isPrivateIP(conn net.Conn) bool {
+func isWhiteListIp(conn net.Conn) bool {
+	_, subnet, _ := net.ParseCIDR(cidrIpWhiteList)
 	var ip = net.ParseIP(conn.RemoteAddr().String())
-
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-		return true
-	}
-
-	for _, block := range privateIPBlocks {
-		if block.Contains(ip) {
-			return true
-		}
-	}
-
-	return false
+	log.Println("Validating IP", conn.RemoteAddr(), )
+	return subnet.Contains(ip)
 }
 
 func (s *session) Serve() {
