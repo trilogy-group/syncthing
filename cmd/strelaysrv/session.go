@@ -137,7 +137,7 @@ func (s *session) allowNewConnection(conn net.Conn) bool {
 
 	if cidrIpWhiteList != "" {
 		if debug {
-			log.Println("Session doesn't require validate new session, IP whitelist is empty")
+			log.Println("Session doesn't require validate new connection, IP whitelist is empty")
 		}
 		return true
 	}
