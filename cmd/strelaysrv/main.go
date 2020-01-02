@@ -60,6 +60,7 @@ var (
 	pools            []string
 	providedBy       string
 	defaultPoolAddrs = "https://relays.syncthing.net/endpoint"
+	cidrIpWhiteList  string
 
 	natEnabled bool
 	natLease   int
@@ -99,6 +100,8 @@ func main() {
 	flag.IntVar(&natTimeout, "nat-timeout", 10, "NAT discovery timeout in seconds")
 	flag.BoolVar(&pprofEnabled, "pprof", false, "Enable the built in profiling on the status server")
 	flag.IntVar(&networkBufferSize, "network-buffer", 2048, "Network buffer size (two of these per proxied connection)")
+	flag.StringVar(&cidrIpWhiteList, "cidrip-whitelist", "", "CIDR IPs required allowing open a session between two devices")
+
 	showVersion := flag.Bool("version", false, "Show version")
 	flag.Parse()
 

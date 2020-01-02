@@ -9,6 +9,7 @@ import (
 	"log"
 	"math"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -117,15 +118,75 @@ type session struct {
 
 func (s *session) AddConnection(conn net.Conn) bool {
 	if debug {
-		log.Println("New connection for", s, "from", conn.RemoteAddr())
+		log.Println("Starting to add a new connection for", s, "from", conn.RemoteAddr(), "local", conn.LocalAddr())
 	}
 
+	if !s.allowNewConnection(conn) {
+		log.Println("Connection not allowed from ", conn.RemoteAddr(), "between", s.clientid, " - ", s.serverid)
+		return false
+	}
+	
 	select {
 	case s.connsChan <- conn:
 		return true
 	default:
 	}
 	return false
+}
+
+func (s *session) allowNewConnection(conn net.Conn) bool {
+
+	if cidrIpWhiteList == "" {
+		if debug {
+			log.Println("Session doesn't require validate new connection, IP whitelist is empty")
+		}
+		return true
+	}
+
+	switch len(s.conns) {
+	case 2:
+		log.Println("Session", s, "doesn't allow more than two connections peer session")
+		return false
+	case 1:
+		if debug {
+			log.Println("Validating new connection in current session", s, " remote address", conn.RemoteAddr())
+		}
+		var existingConn = s.conns[0]
+		existingConnectionIsAllowed := isWhiteListIp(existingConn)
+		newConnectionIsAllowed := isWhiteListIp(conn)
+		if !existingConnectionIsAllowed && !newConnectionIsAllowed {
+			log.Println("The Session is only allowed by one whitelist IP and another any IP, ",
+				"existing connection:(", existingConn.RemoteAddr(), "/", existingConn.LocalAddr(), " ", existingConnectionIsAllowed, ")",
+				"new connection:(", conn.RemoteAddr(), "/", conn.LocalAddr(), " ", newConnectionIsAllowed, ")")
+			return false
+		}
+		return true
+	default:
+		return true
+	}
+}
+
+func getIP(conn net.Conn) net.IP {
+	var ipString = conn.RemoteAddr().String()
+	if ipString != "" {
+		var ipFiltered = strings.Split(ipString, ":")[0]
+		return net.ParseIP(ipFiltered)
+	}
+	return nil
+}
+
+func isWhiteListIp(conn net.Conn) bool {
+	_, subnet, _ := net.ParseCIDR(cidrIpWhiteList)
+	var ip = getIP(conn)
+	if ip != nil {
+		if debug {
+			log.Println("Validating IP", ip.To4(), "in whitelist", cidrIpWhiteList)
+		}
+		return subnet.Contains(ip)
+	} else {
+		log.Println("Unable to get IP info from", conn.RemoteAddr().String())
+		return false
+	}
 }
 
 func (s *session) Serve() {
